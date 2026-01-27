@@ -22,6 +22,8 @@ This skill retrieves that history so Claude can understand where you left off an
 > ```
 > Full context helps Claude make better decisions and maintain consistency throughout your session.
 
+**Don't fear long sessions.** With `/ready`, you can always retrieve past context. Start fresh sessions whenever you want - your conversation history is saved and searchable. Work freely, knowing nothing is truly lost.
+
 ## Installation
 
 ### Option 1: Ask Claude Code (Recommended)
@@ -144,6 +146,8 @@ Claude Code용 "이어서 작업하기" 스킬. 중단했던 작업을 빠르게
 > claude config set --global autoCompact false
 > ```
 > 전체 컨텍스트가 있어야 Claude가 더 나은 결정을 내리고 세션 전체에서 일관성을 유지할 수 있습니다.
+
+**긴 세션이 두렵지 않습니다.** `/ready`가 있으면 언제든 과거 컨텍스트를 가져올 수 있습니다. 원할 때 새 세션을 시작하세요 - 대화 기록은 저장되고 검색 가능합니다. 아무것도 잃어버리지 않는다는 것을 알고 자유롭게 작업하세요.
 
 ## 설치
 
