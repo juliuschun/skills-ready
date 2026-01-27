@@ -6,6 +6,8 @@ Resume work skill for Claude Code. Quickly get back to where you left off.
 
 When you start a new Claude Code session, Claude has no memory of previous conversations. This makes it hard to continue unfinished tasks or pick up work that was never documented.
 
+Even within a session, **autocompact** can silently discard context when conversations get long. You lose decisions, debugging history, and the "why" behind your code - often without realizing it until you need that information.
+
 Past conversation history contains valuable context:
 - **Undone tasks** - What you planned but didn't finish
 - **Decisions made** - Why you chose a certain approach
@@ -13,6 +15,12 @@ Past conversation history contains valuable context:
 - **Debugging context** - Errors encountered and solutions discussed
 
 This skill retrieves that history so Claude can understand where you left off and continue seamlessly.
+
+> **Tip:** Consider disabling autocompact for better context retention:
+> ```
+> claude config set --global autoCompact false
+> ```
+> Full context helps Claude make better decisions and maintain consistency throughout your session.
 
 ## Installation
 
@@ -121,6 +129,8 @@ Claude Code용 "이어서 작업하기" 스킬. 중단했던 작업을 빠르게
 
 새 Claude Code 세션을 시작하면 Claude는 이전 대화를 기억하지 못합니다. 그래서 미완료 작업을 이어가거나 문서화되지 않은 작업을 다시 시작하기 어렵습니다.
 
+세션 중에도 **autocompact** 기능이 대화가 길어지면 컨텍스트를 자동으로 삭제합니다. 결정 사항, 디버깅 히스토리, 코드의 "왜"가 사라지고 - 그 정보가 필요할 때까지 알아차리지 못하는 경우가 많습니다.
+
 과거 대화 기록에는 소중한 컨텍스트가 담겨 있습니다:
 - **미완료 작업** - 계획했지만 끝내지 못한 것들
 - **결정 사항** - 특정 접근 방식을 선택한 이유
@@ -128,6 +138,12 @@ Claude Code용 "이어서 작업하기" 스킬. 중단했던 작업을 빠르게
 - **디버깅 컨텍스트** - 발생한 오류와 논의된 해결책
 
 이 스킬은 그 기록을 가져와서 Claude가 어디서 멈췄는지 이해하고 자연스럽게 이어서 작업할 수 있게 합니다.
+
+> **팁:** 더 나은 컨텍스트 유지를 위해 autocompact를 끄는 것을 권장합니다:
+> ```
+> claude config set --global autoCompact false
+> ```
+> 전체 컨텍스트가 있어야 Claude가 더 나은 결정을 내리고 세션 전체에서 일관성을 유지할 수 있습니다.
 
 ## 설치
 
