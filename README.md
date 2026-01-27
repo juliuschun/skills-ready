@@ -1,98 +1,119 @@
-# /ready - Resume Work Skill for Claude Code
+# /ready
 
-A Claude Code skill that helps you quickly resume work on any project. Shows project context, git activity, past conversation history, and related files.
+Resume work skill for Claude Code. Quickly get back to where you left off.
 
-## What it does
+Claude Code용 "이어서 작업하기" 스킬. 중단했던 작업을 빠르게 재개하세요.
 
-When you run `/ready`, Claude will:
+---
 
-1. **Project Context** - README summary, CLAUDE.md, codebase structure
-2. **Git Activity** - Uncommitted changes, recent commits, modified files
-3. **Session History** - List all Claude sessions for this project
-4. **Interactive Exploration** - Choose a session, view conversation, read related files
-5. **Synthesis** - "Here's where you left off..." with recommended next steps
+## Installation / 설치
 
-## Installation
+### Option 1: Ask Claude Code (Recommended / 추천)
+
+Just type this in Claude Code:
+
+> Install the /ready skill from https://github.com/juliuschun/skills-ready
+
+Claude Code에서 이렇게 입력하세요:
+
+> https://github.com/juliuschun/skills-ready 에서 /ready 스킬을 설치해줘
+
+### Option 2: Manual / 수동 설치
 
 ```bash
-# Create skills directory if it doesn't exist
-mkdir -p ~/.claude/skills/ready
-
-# Copy the skill file
-curl -o ~/.claude/skills/ready/SKILL.md https://raw.githubusercontent.com/<your-username>/claude-ready/main/SKILL.md
+mkdir -p ~/.claude/skills/ready && curl -o ~/.claude/skills/ready/SKILL.md https://raw.githubusercontent.com/juliuschun/skills-ready/main/SKILL.md
 ```
 
-Or manually:
-```bash
-mkdir -p ~/.claude/skills/ready
-cp SKILL.md ~/.claude/skills/ready/
-```
+---
 
-## Usage
-
-In Claude Code, type:
+## Usage / 사용법
 
 ```
 /ready
 ```
 
-Or ask naturally:
-- "What was I working on?"
-- "Show me past sessions"
-- "Resume"
+Or ask naturally / 자연어로 물어보세요:
+- "What was I working on?" / "내가 뭐 하고 있었지?"
+- "Resume" / "이어서 작업"
+- "Show past sessions" / "지난 세션 보여줘"
 
-## Features
+---
 
-### Project-Filtered Sessions
-Only shows sessions from the current project folder.
+## Features / 기능
 
-### Conversation Parser
-Extracts readable conversation from sessions:
-- Filters out tool calls, tool results, thinking blocks
-- Shows only user prompts and Claude's responses
-- Choose: 10, 20, or 30 turns
+| English | 한국어 |
+|---------|--------|
+| **Project Context** - README, CLAUDE.md, structure | **프로젝트 컨텍스트** - README, CLAUDE.md, 구조 |
+| **Git Activity** - Uncommitted changes, commits | **Git 활동** - 미커밋 변경사항, 최근 커밋 |
+| **Session History** - All sessions for this project | **세션 히스토리** - 이 프로젝트의 모든 세션 |
+| **Conversation Replay** - View past chats (10/20/30 turns) | **대화 재생** - 과거 대화 보기 (10/20/30 턴) |
+| **Related Files** - See and read files you worked on | **관련 파일** - 작업했던 파일 확인 및 읽기 |
+| **Synthesis** - "Here's where you left off..." | **요약** - "여기까지 작업했습니다..." |
 
-### Related Files
-After viewing a session, see which files were worked on:
-- Extracts Read/Edit/Write operations from session
-- Ranks by frequency
-- Option to read selected files
+---
 
-### Works Without Git
-Falls back gracefully for non-git projects.
+## How It Works / 작동 방식
 
-## Example Output
+```
+1. Project Context       →  프로젝트 컨텍스트
+   ├── README.md
+   ├── CLAUDE.md
+   └── Codebase structure
+
+2. Git Activity          →  Git 활동
+   ├── Uncommitted changes
+   └── Recent commits
+
+3. Session History       →  세션 히스토리 (인터랙티브)
+   ├── List sessions
+   ├── Pick one
+   └── View conversation
+
+4. Related Files         →  관련 파일 (인터랙티브)
+   ├── Files from session
+   └── Read selected
+
+5. Synthesis             →  요약
+   └── "Here's where you left off..."
+```
+
+---
+
+## Example / 예시
 
 ```
 ## Project: my-app
 Tech Stack: React, TypeScript, Vite
 
 ## Git Activity
-Uncommitted: M src/App.tsx, A components/New.tsx
-Recent: abc123 Add auth, def456 Setup project
+Uncommitted: M src/App.tsx
+Recent: abc123 Add auth flow
 
-## Sessions in This Project
-[1] Implement auth flow (47 msgs, 2024-01-26)
-[2] Setup project (23 msgs, 2024-01-25)
+## Sessions
+[1] Implement login (47 msgs)
+[2] Setup project (23 msgs)
 
-Which session to explore? → [1]
+Which session? → 1
 How many turns? → 10
 
-## Last 10 Turns
-👤 USER: Add login form...
-🤖 CLAUDE: I'll create a login component...
+👤 USER: Add a login form...
+🤖 CLAUDE: I'll create a Login component...
 
 ## Files Worked On
-[1] src/components/Login.tsx (5 writes)
+[1] src/Login.tsx (5 writes)
 [2] src/App.tsx (3 edits)
 
-Which files to read? → [1]
+Read files? → 1
 ```
 
-## Requirements
+---
+
+## Requirements / 요구사항
 
 - Claude Code CLI
-- `jq` (for JSON parsing)
+- `jq` (JSON parsing)
+
+---
 
 ## License
 
