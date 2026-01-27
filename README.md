@@ -2,6 +2,18 @@
 
 Resume work skill for Claude Code. Quickly get back to where you left off.
 
+## Why?
+
+When you start a new Claude Code session, Claude has no memory of previous conversations. This makes it hard to continue unfinished tasks or pick up work that was never documented.
+
+Past conversation history contains valuable context:
+- **Undone tasks** - What you planned but didn't finish
+- **Decisions made** - Why you chose a certain approach
+- **Files touched** - What was being worked on
+- **Debugging context** - Errors encountered and solutions discussed
+
+This skill retrieves that history so Claude can understand where you left off and continue seamlessly.
+
 ## Installation
 
 ### Option 1: Ask Claude Code (Recommended)
@@ -104,6 +116,18 @@ MIT
 # /ready (한국어)
 
 Claude Code용 "이어서 작업하기" 스킬. 중단했던 작업을 빠르게 재개하세요.
+
+## 왜 필요한가요?
+
+새 Claude Code 세션을 시작하면 Claude는 이전 대화를 기억하지 못합니다. 그래서 미완료 작업을 이어가거나 문서화되지 않은 작업을 다시 시작하기 어렵습니다.
+
+과거 대화 기록에는 소중한 컨텍스트가 담겨 있습니다:
+- **미완료 작업** - 계획했지만 끝내지 못한 것들
+- **결정 사항** - 특정 접근 방식을 선택한 이유
+- **작업한 파일** - 어떤 파일을 수정했는지
+- **디버깅 컨텍스트** - 발생한 오류와 논의된 해결책
+
+이 스킬은 그 기록을 가져와서 Claude가 어디서 멈췄는지 이해하고 자연스럽게 이어서 작업할 수 있게 합니다.
 
 ## 설치
 
