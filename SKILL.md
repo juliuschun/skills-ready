@@ -119,7 +119,7 @@ cat "$PROJECT_DIR/sessions-index.json" 2>/dev/null | jq -r '
 '
 ```
 
-Present:
+Present the **full list** of all sessions:
 ```
 ## Sessions in This Project
 
@@ -127,20 +127,27 @@ Present:
 [2] Multi-agent orchestration skill (37 msgs, 2024-01-26)
 [3] Swarm-Team Skill: 3-Layer Architecture (39 msgs, 2024-01-26)
 [4] Repo dissection (8 msgs, 2024-01-26)
+[5] Initial project setup (12 msgs, 2024-01-25)
+[6] README drafting (5 msgs, 2024-01-25)
+... (show all available sessions)
 ```
 
 ### 3.2 Ask Which Session
 
-Use **AskUserQuestion** tool:
+After showing the full list, ask the user which session number they want to explore.
+
+Use **AskUserQuestion** tool with the actual session names from the list:
 ```
 Question: "Which session would you like to explore?"
 Header: "Session"
-Options:
-  - "Most recent session" (description: first in list above)
-  - "Second session" (description: second in list)
-  - "Third session" (description: third in list)
-  - "Skip - show summary only" (description: don't load conversation)
+Options (use actual session summaries from the list above):
+  - "[1] <first session summary>" (description: <message count> messages)
+  - "[2] <second session summary>" (description: <message count> messages)
+  - "[3] <third session summary>" (description: <message count> messages)
+  - "Skip" (description: don't load conversation, just show summary)
 ```
+
+**Note:** AskUserQuestion supports max 4 options. If there are more sessions, show the top 3 most recent + "Skip". The user can select "Other" to type a different session number from the full list displayed above.
 
 ### 3.3 Ask How Many Turns
 
