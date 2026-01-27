@@ -115,20 +115,20 @@ PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
 
 cat "$PROJECT_DIR/sessions-index.json" 2>/dev/null | jq -r '
   .entries | sort_by(.modified) | reverse | to_entries[] |
-  "[\(.key + 1)] \(.value.summary // "Untitled") (\(.value.messageCount) msgs, \(.value.modified | split("T")[0]))"
+  "[\(.key + 1)] \(.value.summary // "Untitled") (\(.value.messageCount) msgs, \(.value.modified | split(".")[0] | sub("T"; " ")))"
 '
 ```
 
-Present the **full list** of all sessions:
+Present the **full list** of all sessions with date and time:
 ```
 ## Sessions in This Project
 
-[1] Claude Companion: Swarm Agent Timeline UI (47 msgs, 2024-01-26)
-[2] Multi-agent orchestration skill (37 msgs, 2024-01-26)
-[3] Swarm-Team Skill: 3-Layer Architecture (39 msgs, 2024-01-26)
-[4] Repo dissection (8 msgs, 2024-01-26)
-[5] Initial project setup (12 msgs, 2024-01-25)
-[6] README drafting (5 msgs, 2024-01-25)
+[1] Claude Companion: Swarm Agent Timeline UI (47 msgs, 2024-01-26 18:45:32)
+[2] Multi-agent orchestration skill (37 msgs, 2024-01-26 15:20:11)
+[3] Swarm-Team Skill: 3-Layer Architecture (39 msgs, 2024-01-26 12:05:44)
+[4] Repo dissection (8 msgs, 2024-01-26 09:30:00)
+[5] Initial project setup (12 msgs, 2024-01-25 22:15:08)
+[6] README drafting (5 msgs, 2024-01-25 14:00:22)
 ... (show all available sessions)
 ```
 
