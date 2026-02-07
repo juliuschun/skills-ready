@@ -1,7 +1,7 @@
 ---
 name: ready
 description: Use this skill when the user asks "what was I working on", "show past sessions", "recent todos", "/ready", "resume", or wants to understand the project and see what they were working on.
-version: 1.2.0
+version: 1.3.0
 ---
 
 # Ready
@@ -21,13 +21,11 @@ Complete "resume work" skill for Claude Code. Shows project context, git activit
    ├── Recent commits (last 10)
    └── Files changed recently
 
-3. Session History (interactive)
+3. Session Timeline (interactive)
    ├── List sessions for this project
    ├── Ask: Which session to explore?
-   ├── Ask: How many conversation turns? (10/20/30)
-   ├── Display conversation (user/assistant messages)
-   ├── Display key CLI commands (builds, commits, installs)
-   └── Display code changes summary (files modified)
+   ├── Ask: How many events? (20/40/60)
+   └── Display interleaved timeline (conversation + commands + edits)
 
 4. Related Files (interactive)
    ├── Extract files from session tool_use (Read/Edit/Write)
@@ -151,19 +149,22 @@ Options (use actual session summaries from the list above):
 
 **Note:** AskUserQuestion supports max 4 options. If there are more sessions, show the top 3 most recent + "Skip". The user can select "Other" to type a different session number from the full list displayed above.
 
-### 3.3 Ask How Many Turns
+### 3.3 Ask How Many Events
 
 If user selected a session, use **AskUserQuestion**:
 ```
-Question: "How many conversation turns to retrieve?"
-Header: "Turns"
+Question: "How many timeline events to retrieve?"
+Header: "Events"
 Options:
-  - "10 turns (Recommended)" (description: last 10 user + 10 assistant messages)
-  - "20 turns" (description: more context)
-  - "30 turns" (description: extensive history)
+  - "20 events (Recommended)" (description: last 20 interactions)
+  - "40 events" (description: more context)
+  - "60 events" (description: extensive history)
 ```
 
-### 3.4 Retrieve Conversation
+### 3.4 Retrieve Session Timeline (Interleaved)
+
+Display an **interleaved chronological timeline** showing conversation, CLI commands, and code changes in the order they actually happened:
+
 ```bash
 ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
 PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
@@ -172,90 +173,60 @@ PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
 SESSION_INDEX=0  # Change based on user selection
 SESSION_ID=$(cat "$PROJECT_DIR/sessions-index.json" | jq -r ".entries | sort_by(.modified) | reverse | .[$SESSION_INDEX].sessionId")
 
-# Number of turns
-TURNS=10  # Change based on user selection
-TAIL_LINES=$((TURNS * 2))
+# Number of events to show
+EVENTS=20  # Change based on user selection
 
-# Parse conversation (filters out tool calls, keeps only user/assistant text)
+# Parse interleaved timeline (conversation + commands + code changes)
 cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
   select(.type == "user" or .type == "assistant") |
   if .type == "user" then
     if (.message.content | type) == "string" then
-      "👤 USER: " + (.message.content | gsub("\n"; " ") | .[0:200])
+      "👤 " + (.message.content | gsub("\n"; " ") | .[0:100])
     elif (.message.content | type) == "array" then
-      (.message.content[] | select(.type == "text") | "👤 USER: " + (.text | gsub("\n"; " ") | .[0:200]))
+      (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:100]))
     else empty end
   elif .type == "assistant" then
-    (.message.content[]? | select(.type == "text") | "🤖 CLAUDE: " + (.text | gsub("\n"; " ") | .[0:300]) + "...")
+    (.message.content[]? |
+      if .type == "text" then
+        "🤖 " + (.text | gsub("\n"; " ") | .[0:120])
+      elif .type == "tool_use" then
+        if .name == "Bash" then
+          "⚡ $ " + (.input.command | gsub("\n"; " ") | .[0:80])
+        elif .name == "Edit" then
+          "📝 Edit: " + (.input.file_path | split("/") | .[-1])
+        elif .name == "Write" then
+          "📄 Write: " + (.input.file_path | split("/") | .[-1])
+        else empty end
+      else empty end)
   else empty end
-' 2>/dev/null | grep -v "^$" | tail -$TAIL_LINES
-```
-
-### 3.5 Extract Significant CLI Commands
-
-Extract only meaningful CLI commands (builds, commits, installs, deployments). Skip exploratory commands like `ls`, `cat`, `grep`, repeated `git status`.
-
-```bash
-ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
-PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
-SESSION_ID="<from-step-3>"  # Use the session ID selected earlier
-
-# Extract significant Bash commands only (filter out exploration/diagnostic commands)
-cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
-  select(.type == "assistant") |
-  .message.content[]? |
-  select(.type == "tool_use") |
-  select(.name == "Bash") |
-  .input.command
-' 2>/dev/null | grep -E '^(npm (run|install|build|test|start)|yarn |pnpm |git (add|commit|push|pull|merge|checkout|rebase)|docker |make |go (build|run|test)|cargo |python |pip |pytest|mv |cp |mkdir |rm |chmod |curl.*-X|wget )' | head -15 | while read cmd; do
-  echo "$ $(echo "$cmd" | tr '\n' ' ' | cut -c1-120)"
-done
+' 2>/dev/null | grep -v "^$" | tail -$EVENTS
 ```
 
 Present as:
 ```
-## Key Commands Executed
+## Session Timeline
 
-$ npm install axios
-$ npm run build
-$ git add -A && git commit -m "Add new feature"
-$ docker compose up -d
+🤖 The issue is that Toss redirects without the payToken...
+📝 Edit: payment.complete.tsx
+📝 Edit: payment.complete.tsx
+👤 "Oops! An unexpected error occurred."
+🤖 Let me check the logs...
+⚡ $ pm2 logs deep-dive-dev --lines 30
+🤖 I see! Toss returns orderNo not payToken. Let me fix...
+📝 Edit: pricing.tsx
+⚡ $ pnpm build
+⚡ $ ./scripts/manage.sh restart webapp
+🤖 Try again. The SSR issue is fixed.
 ```
 
-**Note:** Only shows build/test/install/deploy commands, git operations, and file operations. Diagnostic commands are filtered out.
+**Legend:**
+- 👤 User message
+- 🤖 Claude response
+- ⚡ CLI command executed
+- 📝 File edited
+- 📄 File created/written
 
-### 3.6 Extract Code Changes Summary
-
-Show a compact summary of files edited/created (file paths with operation counts, not full diffs):
-
-```bash
-ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
-PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
-SESSION_ID="<from-step-3>"  # Use the session ID selected earlier
-
-# Count edits and writes per file
-cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
-  select(.type == "assistant") |
-  .message.content[]? |
-  select(.type == "tool_use") |
-  select(.name == "Edit" or .name == "Write") |
-  "\(.name) \(.input.file_path)"
-' 2>/dev/null | grep -v "\.claude/" | sort | uniq -c | sort -rn | head -15
-```
-
-Present as:
-```
-## Code Changes Summary
-
-| File | Operations |
-|------|------------|
-| src/components/App.tsx | 3 edits |
-| src/components/NewFeature.tsx | 1 write |
-| src/utils/api.ts | 2 edits |
-| src/types/feature.ts | 1 write |
-```
-
-**Note:** Shows file-level summary. Use Step 4 (Related Files) to read the actual current file contents if needed.
+This interleaved view shows the actual workflow narrative, making it easy to understand what happened and where you left off.
 
 ---
 
@@ -361,26 +332,23 @@ After gathering all context, synthesize:
 
 ---
 
-## Conversation & Activity Parser
+## Timeline Parser
 
-**For conversation display** (filters out noise):
-- `tool_result` - Tool outputs/returns
-- `thinking` - Extended thinking
+The timeline shows an **interleaved chronological view** of the session, displaying events in the order they actually happened.
+
+**Includes** (in chronological order):
+- `👤` User messages (truncated to 100 chars)
+- `🤖` Claude responses (truncated to 120 chars)
+- `⚡` Bash commands executed (truncated to 80 chars)
+- `📝` File edits (filename only)
+- `📄` File writes/creates (filename only)
+
+**Filters out** (noise):
+- `tool_result` - Tool outputs/returns (we show the command, not the output)
+- `thinking` - Extended thinking blocks
 - System messages
-
-**Conversation keeps**:
-- `👤 USER:` - User prompts
-- `🤖 CLAUDE:` - Claude's text responses
-
-**CLI Commands extracts** (filtered to significant only):
-- Build commands: `npm run`, `yarn`, `go build`, `cargo`, `make`
-- Git operations: `git add`, `git commit`, `git push`
-- Package installs: `npm install`, `pip install`
-- Deployment: `docker`, `kubectl`
-
-**Code Changes extracts** (file-level summary):
-- Edit/Write operation counts per file
-- Excludes `~/.claude/` paths
+- Read operations (just exploration, not changes)
+- Exploratory tools (Glob, Grep, etc.)
 
 ---
 
@@ -405,39 +373,34 @@ for sid in $(cat "$PROJECT_DIR/sessions-index.json" | jq -r '.entries[].sessionI
 done
 ```
 
-### Key CLI Commands from Session
+### Session Timeline (Interleaved)
 ```bash
 ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
 PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
 SESSION_ID="<session-id>"
-# Filter to significant commands only (builds, commits, installs)
 cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
-  select(.type == "assistant") |
-  .message.content[]? |
-  select(.type == "tool_use" and .name == "Bash") |
-  .input.command
-' | grep -E '^(npm |yarn |git (add|commit|push)|docker |make |go |cargo )' | head -15
-```
-
-### Code Changes from Session
-```bash
-ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
-PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
-SESSION_ID="<session-id>"
-# Edits
-cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
-  select(.type == "assistant") |
-  .message.content[]? |
-  select(.type == "tool_use" and .name == "Edit") |
-  "EDIT: " + .input.file_path
-'
-# Writes
-cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
-  select(.type == "assistant") |
-  .message.content[]? |
-  select(.type == "tool_use" and .name == "Write") |
-  "WRITE: " + .input.file_path
-'
+  select(.type == "user" or .type == "assistant") |
+  if .type == "user" then
+    if (.message.content | type) == "string" then
+      "👤 " + (.message.content | gsub("\n"; " ") | .[0:100])
+    elif (.message.content | type) == "array" then
+      (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:100]))
+    else empty end
+  elif .type == "assistant" then
+    (.message.content[]? |
+      if .type == "text" then
+        "🤖 " + (.text | gsub("\n"; " ") | .[0:120])
+      elif .type == "tool_use" then
+        if .name == "Bash" then
+          "⚡ $ " + (.input.command | gsub("\n"; " ") | .[0:80])
+        elif .name == "Edit" then
+          "📝 Edit: " + (.input.file_path | split("/") | .[-1])
+        elif .name == "Write" then
+          "📄 Write: " + (.input.file_path | split("/") | .[-1])
+        else empty end
+      else empty end)
+  else empty end
+' | grep -v "^$" | tail -40
 ```
 
 ---
