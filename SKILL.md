@@ -1,7 +1,7 @@
 ---
 name: ready
 description: Use this skill when the user asks "what was I working on", "show past sessions", "recent todos", "/ready", "resume", or wants to understand the project and see what they were working on.
-version: 1.1.0
+version: 1.2.0
 ---
 
 # Ready
@@ -25,7 +25,9 @@ Complete "resume work" skill for Claude Code. Shows project context, git activit
    ├── List sessions for this project
    ├── Ask: Which session to explore?
    ├── Ask: How many conversation turns? (10/20/30)
-   └── Display conversation
+   ├── Display conversation (user/assistant messages)
+   ├── Display key CLI commands (builds, commits, installs)
+   └── Display code changes summary (files modified)
 
 4. Related Files (interactive)
    ├── Extract files from session tool_use (Read/Edit/Write)
@@ -189,6 +191,72 @@ cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
 ' 2>/dev/null | grep -v "^$" | tail -$TAIL_LINES
 ```
 
+### 3.5 Extract Significant CLI Commands
+
+Extract only meaningful CLI commands (builds, commits, installs, deployments). Skip exploratory commands like `ls`, `cat`, `grep`, repeated `git status`.
+
+```bash
+ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
+PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
+SESSION_ID="<from-step-3>"  # Use the session ID selected earlier
+
+# Extract significant Bash commands only (filter out exploration/diagnostic commands)
+cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
+  select(.type == "assistant") |
+  .message.content[]? |
+  select(.type == "tool_use") |
+  select(.name == "Bash") |
+  .input.command
+' 2>/dev/null | grep -E '^(npm (run|install|build|test|start)|yarn |pnpm |git (add|commit|push|pull|merge|checkout|rebase)|docker |make |go (build|run|test)|cargo |python |pip |pytest|mv |cp |mkdir |rm |chmod |curl.*-X|wget )' | head -15 | while read cmd; do
+  echo "$ $(echo "$cmd" | tr '\n' ' ' | cut -c1-120)"
+done
+```
+
+Present as:
+```
+## Key Commands Executed
+
+$ npm install axios
+$ npm run build
+$ git add -A && git commit -m "Add new feature"
+$ docker compose up -d
+```
+
+**Note:** Only shows build/test/install/deploy commands, git operations, and file operations. Diagnostic commands are filtered out.
+
+### 3.6 Extract Code Changes Summary
+
+Show a compact summary of files edited/created (file paths with operation counts, not full diffs):
+
+```bash
+ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
+PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
+SESSION_ID="<from-step-3>"  # Use the session ID selected earlier
+
+# Count edits and writes per file
+cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
+  select(.type == "assistant") |
+  .message.content[]? |
+  select(.type == "tool_use") |
+  select(.name == "Edit" or .name == "Write") |
+  "\(.name) \(.input.file_path)"
+' 2>/dev/null | grep -v "\.claude/" | sort | uniq -c | sort -rn | head -15
+```
+
+Present as:
+```
+## Code Changes Summary
+
+| File | Operations |
+|------|------------|
+| src/components/App.tsx | 3 edits |
+| src/components/NewFeature.tsx | 1 write |
+| src/utils/api.ts | 2 edits |
+| src/types/feature.ts | 1 write |
+```
+
+**Note:** Shows file-level summary. Use Step 4 (Related Files) to read the actual current file contents if needed.
+
 ---
 
 ## Step 4: Related Files (Interactive)
@@ -288,20 +356,31 @@ After gathering all context, synthesize:
 | Transcripts | `~/.claude/projects/<encoded-path>/<session-id>.jsonl` |
 | Todos | `~/.claude/todos/<session-id>-*.json` |
 | Related files | Extracted from `tool_use` in session transcripts |
+| CLI commands | Extracted from `Bash` tool_use in session transcripts |
+| Code changes | Extracted from `Edit`/`Write` tool_use in session transcripts |
 
 ---
 
-## Conversation Parser
+## Conversation & Activity Parser
 
-**Filters out** (noise):
-- `tool_use` - Claude's tool calls
-- `tool_result` - Tool outputs
+**For conversation display** (filters out noise):
+- `tool_result` - Tool outputs/returns
 - `thinking` - Extended thinking
 - System messages
 
-**Keeps only**:
+**Conversation keeps**:
 - `👤 USER:` - User prompts
 - `🤖 CLAUDE:` - Claude's text responses
+
+**CLI Commands extracts** (filtered to significant only):
+- Build commands: `npm run`, `yarn`, `go build`, `cargo`, `make`
+- Git operations: `git add`, `git commit`, `git push`
+- Package installs: `npm install`, `pip install`
+- Deployment: `docker`, `kubectl`
+
+**Code Changes extracts** (file-level summary):
+- Edit/Write operation counts per file
+- Excludes `~/.claude/` paths
 
 ---
 
@@ -324,6 +403,41 @@ for sid in $(cat "$PROJECT_DIR/sessions-index.json" | jq -r '.entries[].sessionI
   TODO="$HOME/.claude/todos/${sid}-agent-${sid}.json"
   [ -s "$TODO" ] && [ $(wc -c < "$TODO") -gt 2 ] && echo "=== $sid ===" && cat "$TODO" | jq -r '.[] | "[\(.status)] \(.content)"'
 done
+```
+
+### Key CLI Commands from Session
+```bash
+ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
+PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
+SESSION_ID="<session-id>"
+# Filter to significant commands only (builds, commits, installs)
+cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
+  select(.type == "assistant") |
+  .message.content[]? |
+  select(.type == "tool_use" and .name == "Bash") |
+  .input.command
+' | grep -E '^(npm |yarn |git (add|commit|push)|docker |make |go |cargo )' | head -15
+```
+
+### Code Changes from Session
+```bash
+ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
+PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
+SESSION_ID="<session-id>"
+# Edits
+cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
+  select(.type == "assistant") |
+  .message.content[]? |
+  select(.type == "tool_use" and .name == "Edit") |
+  "EDIT: " + .input.file_path
+'
+# Writes
+cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
+  select(.type == "assistant") |
+  .message.content[]? |
+  select(.type == "tool_use" and .name == "Write") |
+  "WRITE: " + .input.file_path
+'
 ```
 
 ---
