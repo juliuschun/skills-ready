@@ -1,7 +1,7 @@
 ---
 name: ready
 description: Use this skill when the user asks "what was I working on", "show past sessions", "recent todos", "/ready", "resume", or wants to understand the project and see what they were working on.
-version: 1.3.0
+version: 1.4.0
 ---
 
 # Ready
@@ -22,8 +22,9 @@ Complete "resume work" skill for Claude Code. Shows project context, git activit
    └── Files changed recently
 
 3. Session Timeline (interactive)
-   ├── List sessions for this project
-   ├── Ask: Which session to explore?
+   ├── Haiku subagent reads last 10 sessions (5 turns each)
+   ├── Show summary table with last message from each
+   ├── Ask: Which session to continue?
    ├── Ask: How many events? (20/40/60)
    └── Display interleaved timeline (conversation + commands + edits)
 
@@ -108,46 +109,85 @@ A  components/NewFeature.tsx
 
 ## Step 3: Session History (Interactive)
 
-### 3.1 List Sessions
+### 3.1 Summarize Recent Sessions with Haiku Subagent
+
+Use the **Task tool** with `subagent_type: "haiku"` and `model: "haiku"` to efficiently read and summarize the last 10 sessions. The subagent should:
+
+1. Get the list of session IDs:
 ```bash
 ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
 PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
 
+# Get last 10 session IDs
 cat "$PROJECT_DIR/sessions-index.json" 2>/dev/null | jq -r '
-  .entries | sort_by(.modified) | reverse | to_entries[] |
-  "[\(.key + 1)] \(.value.summary // "Untitled") (\(.value.messageCount) msgs, \(.value.modified | split(".")[0] | sub("T"; " ")))"
+  .entries | sort_by(.modified) | reverse | .[:10][] |
+  "\(.sessionId) | \(.summary // "Untitled") | \(.messageCount) msgs | \(.modified | split("T")[0])"
 '
 ```
 
-Present the **full list** of all sessions with date and time:
+2. For each session, extract the **last 5 conversation turns** (user/assistant only):
+```bash
+SESSION_ID="<session-id>"
+cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
+  select(.type == "user" or .type == "assistant") |
+  if .type == "user" then
+    if (.message.content | type) == "string" then
+      "👤 " + (.message.content | gsub("\n"; " ") | .[0:150])
+    elif (.message.content | type) == "array" then
+      (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:150]))
+    else empty end
+  elif .type == "assistant" then
+    (.message.content[]? | select(.type == "text") | "🤖 " + (.text | gsub("\n"; " ") | .[0:200]))
+  else empty end
+' 2>/dev/null | grep -v "^$" | tail -10
 ```
-## Sessions in This Project
 
-[1] Claude Companion: Swarm Agent Timeline UI (47 msgs, 2024-01-26 18:45:32)
-[2] Multi-agent orchestration skill (37 msgs, 2024-01-26 15:20:11)
-[3] Swarm-Team Skill: 3-Layer Architecture (39 msgs, 2024-01-26 12:05:44)
-[4] Repo dissection (8 msgs, 2024-01-26 09:30:00)
-[5] Initial project setup (12 msgs, 2024-01-25 22:15:08)
-[6] README drafting (5 msgs, 2024-01-25 14:00:22)
-... (show all available sessions)
+3. Present a summary table with the **last message** from each session:
+
+```
+## Recent Sessions (Last 10)
+
+| # | Session | Last Activity | Where You Left Off |
+|---|---------|---------------|-------------------|
+| 1 | Toss Payment Integration | 2h ago | 👤 "should we test or find bugs with subagents?" |
+| 2 | Heavy Mode Refactor | 1d ago | 🤖 "All fixes applied. Ready for testing." |
+| 3 | API Rate Limiting | 2d ago | 👤 "deploy to prod when ready" |
+| 4 | UI Polish | 3d ago | 🤖 "Dark mode toggle is working." |
+| 5 | Database Migration | 4d ago | 👤 "looks good, let's move on" |
+...
+```
+
+**Haiku Subagent Prompt:**
+```
+Read the last 10 sessions for this project. For each session:
+1. Extract the last 5 user/assistant conversation turns
+2. Identify the final message (what was the user/claude last discussing?)
+3. Summarize in one line what the session was about
+
+Present as a table showing:
+- Session number
+- Session title
+- Time since last activity
+- The actual last message (truncated) so user knows where they left off
+
+This helps the user quickly see all recent work and pick which to continue.
 ```
 
 ### 3.2 Ask Which Session
 
-After showing the full list, ask the user which session number they want to explore.
+After showing the summary table, ask the user which session to explore:
 
-Use **AskUserQuestion** tool with the actual session names from the list:
 ```
-Question: "Which session would you like to explore?"
+Question: "Which session would you like to continue?"
 Header: "Session"
-Options (use actual session summaries from the list above):
-  - "[1] <first session summary>" (description: <message count> messages)
-  - "[2] <second session summary>" (description: <message count> messages)
-  - "[3] <third session summary>" (description: <message count> messages)
-  - "Skip" (description: don't load conversation, just show summary)
+Options (use actual last messages from the table):
+  - "[1] Toss Payment" (description: "should we test or find bugs...")
+  - "[2] Heavy Mode" (description: "All fixes applied. Ready for testing.")
+  - "[3] API Rate Limiting" (description: "deploy to prod when ready")
+  - "Skip" (description: proceed with synthesis only)
 ```
 
-**Note:** AskUserQuestion supports max 4 options. If there are more sessions, show the top 3 most recent + "Skip". The user can select "Other" to type a different session number from the full list displayed above.
+**Note:** The last message preview helps users instantly recognize where they left off without needing to load the full session.
 
 ### 3.3 Ask How Many Events
 
