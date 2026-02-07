@@ -1,7 +1,7 @@
 ---
 name: ready
 description: Use this skill when the user asks "what was I working on", "show past sessions", "recent todos", "/ready", "resume", or wants to understand the project and see what they were working on.
-version: 1.4.0
+version: 1.5.0
 ---
 
 # Ready
@@ -22,11 +22,11 @@ Complete "resume work" skill for Claude Code. Shows project context, git activit
    └── Files changed recently
 
 3. Session Timeline (interactive)
-   ├── Haiku subagent reads last 10 sessions (5 turns each)
-   ├── Show summary table with last message from each
-   ├── Ask: Which session to continue?
-   ├── Ask: How many events? (20/40/60)
-   └── Display interleaved timeline (conversation + commands + edits)
+   ├── Haiku reads ALL turns from last 10 sessions
+   ├── Summarizes major points + identifies related sessions
+   ├── Ask: Which session (or related group) to continue?
+   ├── Retrieve full timeline, haiku summarizes key points
+   └── Show: decisions, features, bugs, next steps
 
 4. Related Files (interactive)
    ├── Extract files from session tool_use (Read/Edit/Write)
@@ -160,63 +160,66 @@ cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
 **Haiku Subagent Prompt:**
 ```
 Read the last 10 sessions for this project. For each session:
-1. Extract the last 5 user/assistant conversation turns
-2. Identify the final message (what was the user/claude last discussing?)
-3. Summarize in one line what the session was about
+1. Read ALL conversation turns (not just last 5)
+2. Summarize the MAJOR POINTS of what was done (key decisions, features built, bugs fixed)
+3. Identify the final message (where they left off)
+4. Look for RELATED sessions that should be reviewed together
 
-Present as a table showing:
-- Session number
-- Session title
-- Time since last activity
-- The actual last message (truncated) so user knows where they left off
+Present:
 
-This helps the user quickly see all recent work and pick which to continue.
+## Session Summaries
+
+### [1] Toss Payment Integration (2h ago)
+**What was done:**
+- Integrated Toss payment API
+- Fixed SSR issue with sessionStorage
+- Added payment status endpoint
+
+**Left off at:** 👤 "should we test or find bugs with subagents?"
+
+### [2] Heavy Mode Refactor (1d ago)
+**What was done:**
+- Simplified 3-phase to 2-phase architecture
+- Removed adaptive round logic
+- Cleaned up dead code
+
+**Left off at:** 🤖 "All fixes applied. Ready for testing."
+
+---
+
+## Related Sessions (Review Together)
+Sessions 1, 2, 5 all relate to **payment integration** - recommend reviewing together for full context.
+Sessions 3, 7 both involve **API changes** - may have dependencies.
+
+This helps the user understand the full story, not just where they stopped.
 ```
 
 ### 3.2 Ask Which Session
 
-After showing the summary table, ask the user which session to explore:
+After showing the summaries, ask the user which session(s) to explore:
 
 ```
 Question: "Which session would you like to continue?"
 Header: "Session"
-Options (use actual last messages from the table):
-  - "[1] Toss Payment" (description: "should we test or find bugs...")
-  - "[2] Heavy Mode" (description: "All fixes applied. Ready for testing.")
-  - "[3] API Rate Limiting" (description: "deploy to prod when ready")
+Options (based on haiku analysis):
+  - "[1] Toss Payment" (description: "Integrated API, fixed SSR, left at testing question")
+  - "[2] Heavy Mode" (description: "Refactored to 2-phase, cleaned dead code, ready to test")
+  - "Related: 1,2,5" (description: "Review all payment-related sessions together")
   - "Skip" (description: proceed with synthesis only)
 ```
 
-**Note:** The last message preview helps users instantly recognize where they left off without needing to load the full session.
+**Note:** If haiku identifies related sessions, offer to load them together for full context.
 
-### 3.3 Ask How Many Events
+### 3.3 Retrieve Full Session Timeline
 
-If user selected a session, use **AskUserQuestion**:
-```
-Question: "How many timeline events to retrieve?"
-Header: "Events"
-Options:
-  - "20 events (Recommended)" (description: last 20 interactions)
-  - "40 events" (description: more context)
-  - "60 events" (description: extensive history)
-```
-
-### 3.4 Retrieve Session Timeline (Interleaved)
-
-Display an **interleaved chronological timeline** showing conversation, CLI commands, and code changes in the order they actually happened:
+Retrieve the **complete timeline** for the selected session(s). No need to ask how many - just get everything and let haiku summarize the major points.
 
 ```bash
 ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
 PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
+SESSION_ID="<selected-session-id>"
 
-# Get session ID by index (0-based)
-SESSION_INDEX=0  # Change based on user selection
-SESSION_ID=$(cat "$PROJECT_DIR/sessions-index.json" | jq -r ".entries | sort_by(.modified) | reverse | .[$SESSION_INDEX].sessionId")
-
-# Number of events to show
-EVENTS=20  # Change based on user selection
-
-# Parse interleaved timeline (conversation + commands + code changes)
+# Get FULL interleaved timeline (all events)
 cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
   select(.type == "user" or .type == "assistant") |
   if .type == "user" then
@@ -239,34 +242,47 @@ cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
         else empty end
       else empty end)
   else empty end
-' 2>/dev/null | grep -v "^$" | tail -$EVENTS
+' 2>/dev/null | grep -v "^$"
+```
+
+Then use **haiku subagent** to summarize the major points:
+
+**Haiku Summary Prompt:**
+```
+Given this full session timeline, summarize:
+1. MAJOR DECISIONS made
+2. KEY FEATURES built or modified
+3. BUGS FIXED
+4. BLOCKERS or open questions
+5. NEXT STEPS implied by the conversation
+
+Keep it concise - bullet points, not paragraphs.
 ```
 
 Present as:
 ```
-## Session Timeline
+## Session: Toss Payment Integration
 
-🤖 The issue is that Toss redirects without the payToken...
-📝 Edit: payment.complete.tsx
-📝 Edit: payment.complete.tsx
-👤 "Oops! An unexpected error occurred."
-🤖 Let me check the logs...
-⚡ $ pm2 logs deep-dive-dev --lines 30
-🤖 I see! Toss returns orderNo not payToken. Let me fix...
-📝 Edit: pricing.tsx
-⚡ $ pnpm build
-⚡ $ ./scripts/manage.sh restart webapp
-🤖 Try again. The SSR issue is fixed.
+### Major Points
+- Integrated Toss payment API with test credentials
+- Fixed SSR issue: sessionStorage not available server-side
+- Created payment status endpoint
+- Discovered: Toss returns `orderNo` not `payToken`
+
+### Files Changed
+- payment.complete.tsx (6 edits)
+- payment.py (4 edits)
+- pricing.tsx (3 edits)
+
+### Left Off At
+👤 "should we test or find bugs with subagents?"
+
+### Suggested Next Steps
+1. Run E2E payment flow test
+2. Or launch bug-finding subagents first
 ```
 
-**Legend:**
-- 👤 User message
-- 🤖 Claude response
-- ⚡ CLI command executed
-- 📝 File edited
-- 📄 File created/written
-
-This interleaved view shows the actual workflow narrative, making it easy to understand what happened and where you left off.
+This gives the user the **full story** without drowning in raw timeline events.
 
 ---
 
