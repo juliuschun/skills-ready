@@ -1,7 +1,7 @@
 ---
 name: ready
 description: Use this skill when the user asks "what was I working on", "show past sessions", "recent todos", "/ready", "resume", or wants to understand the project and see what they were working on.
-version: 1.6.0
+version: 1.7.0
 ---
 
 # Ready
@@ -125,30 +125,29 @@ cat "$PROJECT_DIR/sessions-index.json" 2>/dev/null | jq -r '
 '
 ```
 
-2. For each session, extract **conversation text only** (no tool calls - keeps context small):
+2. For each session, extract **last 200 conversation lines only** (capped to avoid token limits):
 ```bash
 SESSION_ID="<session-id>"
-# Extract ONLY text messages (user prompts + Claude responses)
-# Skip tool_use blocks entirely - haiku doesn't need implementation details
+# Extract ONLY text messages, LAST 200 lines (user prompts + Claude responses)
+# Skip tool_use blocks, cap length to stay under token limits
 cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
   select(.type == "user" or .type == "assistant") |
   if .type == "user" then
     if (.message.content | type) == "string" then
-      "👤 " + (.message.content | gsub("\n"; " ") | .[0:150])
+      "👤 " + (.message.content | gsub("\n"; " ") | .[0:100])
     elif (.message.content | type) == "array" then
-      (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:150]))
+      (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:100]))
     else empty end
   elif .type == "assistant" then
-    # Only text blocks, NOT tool_use
-    (.message.content[]? | select(.type == "text") | "🤖 " + (.text | gsub("\n"; " ") | .[0:200]))
+    (.message.content[]? | select(.type == "text") | "🤖 " + (.text | gsub("\n"; " ") | .[0:150]))
   else empty end
-' 2>/dev/null | grep -v "^$"
+' 2>/dev/null | grep -v "^$" | tail -200
 ```
 
-**Why conversation only?**
-- Tool calls (edits, bash) are noisy implementation details
-- Conversation captures the narrative: what was asked, decided, concluded
-- Much smaller context = faster + cheaper haiku calls
+**Why capped at 200 lines?**
+- Prevents token overflow (some sessions are 25k+ tokens)
+- Last 200 lines captures where you left off
+- Shorter truncation (100/150 chars) keeps it lean
 
 3. Present a summary table with the **last message** from each session:
 
@@ -222,25 +221,25 @@ Options (based on haiku analysis):
 
 For the selected session, retrieve two things:
 
-**A. Conversation text** (for haiku to summarize):
+**A. Conversation text** (for haiku to summarize, capped at 200 lines):
 ```bash
 ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
 PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
 SESSION_ID="<selected-session-id>"
 
-# Conversation only (no tool calls) - small context for haiku
+# Last 50 conversation turns only - prevents token overflow
 cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
   select(.type == "user" or .type == "assistant") |
   if .type == "user" then
     if (.message.content | type) == "string" then
-      "👤 " + (.message.content | gsub("\n"; " ") | .[0:150])
+      "👤 " + (.message.content | gsub("\n"; " ") | .[0:100])
     elif (.message.content | type) == "array" then
-      (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:150]))
+      (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:100]))
     else empty end
   elif .type == "assistant" then
-    (.message.content[]? | select(.type == "text") | "🤖 " + (.text | gsub("\n"; " ") | .[0:200]))
+    (.message.content[]? | select(.type == "text") | "🤖 " + (.text | gsub("\n"; " ") | .[0:150]))
   else empty end
-' 2>/dev/null | grep -v "^$"
+' 2>/dev/null | grep -v "^$" | tail -200
 ```
 
 **B. Files changed** (simple count, no haiku needed):
