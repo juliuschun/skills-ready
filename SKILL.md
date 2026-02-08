@@ -1,7 +1,7 @@
 ---
 name: ready
 description: Use this skill when the user asks "what was I working on", "show past sessions", "recent todos", "/ready", "resume", or wants to understand the project and see what they were working on.
-version: 1.5.0
+version: 1.6.0
 ---
 
 # Ready
@@ -22,11 +22,11 @@ Complete "resume work" skill for Claude Code. Shows project context, git activit
    └── Files changed recently
 
 3. Session Timeline (interactive)
-   ├── Haiku reads ALL turns from last 10 sessions
+   ├── Haiku reads CONVERSATION ONLY (no tool calls) from last 10 sessions
    ├── Summarizes major points + identifies related sessions
    ├── Ask: Which session (or related group) to continue?
-   ├── Retrieve full timeline, haiku summarizes key points
-   └── Show: decisions, features, bugs, next steps
+   ├── Retrieve conversation + file change counts (lean context)
+   └── Haiku summarizes: goal, actions, decisions, next steps
 
 4. Related Files (interactive)
    ├── Extract files from session tool_use (Read/Edit/Write)
@@ -125,9 +125,11 @@ cat "$PROJECT_DIR/sessions-index.json" 2>/dev/null | jq -r '
 '
 ```
 
-2. For each session, extract the **last 5 conversation turns** (user/assistant only):
+2. For each session, extract **conversation text only** (no tool calls - keeps context small):
 ```bash
 SESSION_ID="<session-id>"
+# Extract ONLY text messages (user prompts + Claude responses)
+# Skip tool_use blocks entirely - haiku doesn't need implementation details
 cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
   select(.type == "user" or .type == "assistant") |
   if .type == "user" then
@@ -137,10 +139,16 @@ cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
       (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:150]))
     else empty end
   elif .type == "assistant" then
+    # Only text blocks, NOT tool_use
     (.message.content[]? | select(.type == "text") | "🤖 " + (.text | gsub("\n"; " ") | .[0:200]))
   else empty end
-' 2>/dev/null | grep -v "^$" | tail -10
+' 2>/dev/null | grep -v "^$"
 ```
+
+**Why conversation only?**
+- Tool calls (edits, bash) are noisy implementation details
+- Conversation captures the narrative: what was asked, decided, concluded
+- Much smaller context = faster + cheaper haiku calls
 
 3. Present a summary table with the **last message** from each session:
 
@@ -210,53 +218,55 @@ Options (based on haiku analysis):
 
 **Note:** If haiku identifies related sessions, offer to load them together for full context.
 
-### 3.3 Retrieve Full Session Timeline
+### 3.3 Retrieve Session Conversation + File Summary
 
-Retrieve the **complete timeline** for the selected session(s). No need to ask how many - just get everything and let haiku summarize the major points.
+For the selected session, retrieve two things:
 
+**A. Conversation text** (for haiku to summarize):
 ```bash
 ENCODED_PATH=$(pwd | sed 's|/|-|g; s|_|-|g')
 PROJECT_DIR="$HOME/.claude/projects/$ENCODED_PATH"
 SESSION_ID="<selected-session-id>"
 
-# Get FULL interleaved timeline (all events)
+# Conversation only (no tool calls) - small context for haiku
 cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
   select(.type == "user" or .type == "assistant") |
   if .type == "user" then
     if (.message.content | type) == "string" then
-      "👤 " + (.message.content | gsub("\n"; " ") | .[0:100])
+      "👤 " + (.message.content | gsub("\n"; " ") | .[0:150])
     elif (.message.content | type) == "array" then
-      (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:100]))
+      (.message.content[] | select(.type == "text") | "👤 " + (.text | gsub("\n"; " ") | .[0:150]))
     else empty end
   elif .type == "assistant" then
-    (.message.content[]? |
-      if .type == "text" then
-        "🤖 " + (.text | gsub("\n"; " ") | .[0:120])
-      elif .type == "tool_use" then
-        if .name == "Bash" then
-          "⚡ $ " + (.input.command | gsub("\n"; " ") | .[0:80])
-        elif .name == "Edit" then
-          "📝 Edit: " + (.input.file_path | split("/") | .[-1])
-        elif .name == "Write" then
-          "📄 Write: " + (.input.file_path | split("/") | .[-1])
-        else empty end
-      else empty end)
+    (.message.content[]? | select(.type == "text") | "🤖 " + (.text | gsub("\n"; " ") | .[0:200]))
   else empty end
 ' 2>/dev/null | grep -v "^$"
 ```
 
-Then use **haiku subagent** to summarize the major points:
+**B. Files changed** (simple count, no haiku needed):
+```bash
+# Just count edits/writes per file
+cat "$PROJECT_DIR/$SESSION_ID.jsonl" | jq -r '
+  select(.type == "assistant") |
+  .message.content[]? |
+  select(.type == "tool_use") |
+  select(.name == "Edit" or .name == "Write") |
+  .input.file_path | split("/") | .[-1]
+' 2>/dev/null | sort | uniq -c | sort -rn | head -10
+```
+
+Then use **haiku** to summarize the conversation:
 
 **Haiku Summary Prompt:**
 ```
-Given this full session timeline, summarize:
-1. MAJOR DECISIONS made
-2. KEY FEATURES built or modified
-3. BUGS FIXED
-4. BLOCKERS or open questions
-5. NEXT STEPS implied by the conversation
+Given this conversation (user/assistant messages only), summarize:
+1. What was the USER trying to accomplish?
+2. What did CLAUDE do to help?
+3. What DECISIONS were made?
+4. What's the CURRENT STATE? (done, blocked, in progress)
+5. What should happen NEXT?
 
-Keep it concise - bullet points, not paragraphs.
+Be concise - 3-5 bullet points max.
 ```
 
 Present as:
